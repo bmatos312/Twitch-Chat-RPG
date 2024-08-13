@@ -37,6 +37,17 @@ class PlayerClass(db.Model):
     description = db.Column(db.String(250), nullable=False)
     players = db.relationship('Player', backref='class', lazy=True)
 
+class Mob(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(64), nullable=False)
+    health = db.Column(db.Integer, nullable=False)
+    attack = db.Column(db.Integer, nullable=False)
+    defense = db.Column(db.Integer, nullable=False)
+    description = db.Column(db.String(256))
+
+    def __repr__(self):
+        return f'<Mob {self.name}>'
+
 class GameSession(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     player_id = db.Column(db.Integer, db.ForeignKey('player.id'), nullable=False)
@@ -92,4 +103,3 @@ class Reward(db.Model):
 
     def __repr__(self):
         return f'<Reward {self.description}>'
-
