@@ -1,66 +1,66 @@
-from flask import Flask, request, jsonify, redirect, url_for
-from app import app, db, twitch
-from app. models import TwitchUser, TwitchEvent, Player
-from app.game_logic import Bot
+from flask import Blueprint, request, jsonify, redirect, url_for
+from app import app, get_db_connection
 
-@app.route('/')
+main = Blueprint('main', __name__)
+
+@main.route('/')
 def home():
     return "Welcome to the Twitch RPG Backend"
 
-@app.route('/twitch/event', methods=['POST'])
+@main.route('/test-db')
+def test_db():
+    try:
+        connection = get_db_connection()
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) AS player_count FROM Player")
+            result = cursor.fetchone()
+        connection.close()
+        return jsonify({"status": "success", "players_count": result['player_count']})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+
+@main.route('/twitch/event', methods=['POST'])
 def handle_twitch_event():
     event_data = request.json
     if not event_data:
         return jsonify({"error": "Invalid request"}), 400
 
     try:
-        # Parse the Twitch event and store it in the database
-        event_type = event_data.get('event_type')
-        twitch_user_id = event_data.get('user_id')
-        username = event_data.get('username')
+        connection = get_db_connection()
+        with connection.cursor() as cursor:
+            event_type = event_data.get('event_type')
+            twitch_user_id = event_data.get('user_id')
+            username = event_data.get('username')
 
-        # Store or update the Twitch user in the database
-        twitch_user = TwitchUser.query.filter_by(twitch_id=twitch_user_id).first()
-        if not twitch_user:
-            twitch_user = TwitchUser(twitch_id=twitch_user_id, username=username)
-            db.session.add(twitch_user)
-            db.session.commit()
+            # Insert or update the Twitch user in the database
+            cursor.execute("SELECT id FROM TwitchUser WHERE twitch_id=%s", (twitch_user_id,))
+            twitch_user = cursor.fetchone()
+            if not twitch_user:
+                cursor.execute("INSERT INTO TwitchUser (twitch_id, username) VALUES (%s, %s)", (twitch_user_id, username))
+                connection.commit()
 
-        # Create and store the event
-        new_event = TwitchEvent(
-            event_type=event_type,
-            twitch_user_id=twitch_user.id,
-            timestamp=datetime.utcnow(),
-            data=event_data
-        )
-        db.session.add(new_event)
-        db.session.commit()
-
-        # Trigger game logic if necessary
-        if event_type == 'chat_command':
-            command = event_data.get('command')
-            if command == '!fight':
-                bot = Bot()
-                result = bot.fight(twitch_user_id)
-                return jsonify({"result": result}), 200
+            # Log the event
+            cursor.execute(
+                "INSERT INTO TwitchEvent (event_type, twitch_user_id, timestamp, data) VALUES (%s, %s, NOW(), %s)",
+                (event_type, twitch_user_id, str(event_data))
+            )
+            connection.commit()
+        
+        connection.close()
 
         return jsonify({"status": "Event processed"}), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/twitch/auth')
+@main.route('/twitch/auth')
 def twitch_auth():
-    return twitch.authorize_redirect(redirect_uri=url_for('twitch_callback', _external=True))
+    # Your OAuth logic here
+    pass
 
-@app.route('/twitch/callback')
+@main.route('/twitch/callback')
 def twitch_callback():
-    token = twitch.authorize_access_token()
-    resp = twitch.get('userinfo')
-    profile = resp.json()
-    # Handle user information and session management here
-    return redirect(url_for('home'))
+    # Your OAuth callback logic here
+    pass
 
-if __name__ == "__main__":
-    app.run(debug=True)
-
+app.register_blueprint(main)
