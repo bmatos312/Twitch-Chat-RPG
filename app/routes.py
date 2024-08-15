@@ -109,3 +109,8 @@ def twitch_callback():
     # Handle user information and session management here
     return redirect(url_for('main.home'))
 
+blueprint_name = Blueprint('blueprint_name', __name__)
+
+@blueprint_name.route('/')
+def index():
+    return "Blueprint home"
