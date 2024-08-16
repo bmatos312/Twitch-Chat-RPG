@@ -31,3 +31,4 @@ urllib3==2.2.2
 Werkzeug==3.0.3
 yarl==1.9.4
 pytest>=6.0.0
+pymysql
