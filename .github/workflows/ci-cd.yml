@@ -4,10 +4,9 @@ on:
   push:
     branches:
       - master
-  pull_request:
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
 
     steps:
@@ -22,10 +21,9 @@ jobs:
       run: |
         python -m venv venv
         source venv/bin/activate
-        pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Run tests
+    - name: Run Tests
       run: |
         source venv/bin/activate
         pytest
