@@ -1,0 +1,12 @@
+import socket
+import os
+
+socket_path = '/root/Twitch-Chat-RPG/gunicorn.sock'
+if os.path.exists(socket_path):
+    os.remove(socket_path)
+
+server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+server.bind(socket_path)
+server.listen(1)
+print(f"Listening on {socket_path}")
+
