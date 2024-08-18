@@ -2,6 +2,8 @@ import logging
 import pymysql
 import random
 import datetime
+import time
+import schedule
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -331,6 +333,94 @@ def test_tied_dps_different_classes():
     assert winner in ['player_1', 'player_2'], "Either player should win with tied DPS."
     assert rewards['gold'] > 0, "Gold should be awarded."
     assert 'items' in rewards, "Items should be awarded based on the class."
+
+def calculate_xp(monster, is_event_monster=False):
+    base_xp = monster['xp_value']
+    if is_event_monster:
+        return base_xp * 2  # Double XP for event monsters
+    return base_xp
+
+def award_xp(player, monster, is_event_monster=False):
+    xp_earned = calculate_xp(monster, is_event_monster)
+    player['xp'] += xp_earned
+    player['level'], player['xp'], leveled_up = calculate_level(player['level'], player['xp'])
+    if leveled_up:
+        apply_stat_increases(player)
+        give_level_up_rewards(player)
+    return xp_earned
+
+def scale_mob(mob, player_level):
+    mob['health'] += player_level * mob['health_scaling']
+    mob['attack'] += player_level * mob['attack_scaling']
+    mob['defense'] += player_level * mob['defense_scaling']
+    return mob
+
+def is_streamer_live(client_id, client_secret, streamer_id):
+    # Get an OAuth token
+    token_url = "https://id.twitch.tv/oauth2/token"
+    params = {
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "grant_type": "client_credentials"
+    }
+    token_response = requests.post(token_url, params=params)
+    access_token = token_response.json().get("access_token")
+    
+    # Check stream status
+    headers = {
+        "Client-ID": client_id,
+        "Authorization": f"Bearer {access_token}"
+    }
+    stream_url = f"https://api.twitch.tv/helix/streams?user_id={streamer_id}"
+    stream_response = requests.get(stream_url, headers=headers)
+    data = stream_response.json()
+    
+    if data.get('data') and len(data['data']) > 0:
+        return True  # Streamer is live
+    else:
+        return False  # Streamer is not live
+def spawn_high_level_mob():
+    high_level_mobs = ["Sandworm of Shai-Hulud", "Paul Atreides", "Baron Harkonnen"]
+    chosen_mob = random.choice(high_level_mobs)
+    print(f"A {chosen_mob} has spawned!")
+
+def check_and_spawn_mob():
+    if is_streamer_live(client_id, client_secret, streamer_id):
+        spawn_high_level_mob()
+    else:
+        print("Streamer is not live. No mob spawned.")
+
+    # Schedule the mob spawn twice a day at specific times (e.g., 1 PM and 7 PM)
+    schedule.every().day.at("13:00").do(check_and_spawn_mob)
+    schedule.every().day.at("19:00").do(check_and_spawn_mob)
+
+    while True:
+        schedule.run_pending()
+        time.sleep(60)  # Check every minute
+
+def notify_players(mob_name):
+    message = f"A wild {mob_name} has appeared! Prepare for battle!"
+    # Send this message to Twitch chat or display it in the game
+    print(message)  # Example placeholder
+
+def spawn_high_level_mob():
+    high_level_mobs = ["Sandworm of Shai-Hulud", "Paul Atreides", "Baron Harkonnen"]
+    chosen_mob = random.choice(high_level_mobs)
+    notify_players(chosen_mob)
+    print(f"A {chosen_mob} has spawned!")
+
+def update_mob_spawn_in_db(mob_name):
+    # Example of how you might update your database
+    # Assuming you have a 'Mob' table and an 'active' field to indicate active mobs
+    cursor.execute("UPDATE Mob SET active = 1 WHERE name = %s", (mob_name,))
+    db.commit()
+
+def spawn_high_level_mob():
+    high_level_mobs = ["Sandworm of Shai-Hulud", "Paul Atreides", "Baron Harkonnen"]
+    chosen_mob = random.choice(high_level_mobs)
+    notify_players(chosen_mob)
+    update_mob_spawn_in_db(chosen_mob)
+    print(f"A {chosen_mob} has spawned!")
 
 
 def get_db_connection():

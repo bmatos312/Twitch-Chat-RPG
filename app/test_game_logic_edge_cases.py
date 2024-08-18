@@ -115,3 +115,40 @@ def test_tied_dps_different_classes():
     assert winner in ['player_1', 'player_2'], "Either player should win with tied DPS."
     assert rewards['gold'] > 0, "Gold should be awarded."
     assert 'items' in rewards, "Items should be awarded based on the class."
+
+@patch('twitch_utils.is_streamer_live')
+def test_streamer_live_status(mock_is_live):
+    # Simulate streamer being live
+    mock_is_live.return_value = True
+    assert is_streamer_live('fake_client_id', 'fake_client_secret', 'fake_streamer_id') == True
+
+    # Simulate streamer not being live
+    mock_is_live.return_value = False
+    assert is_streamer_live('fake_client_id', 'fake_client_secret', 'fake_streamer_id') == False
+
+@patch('twitch_utils.is_streamer_live')
+@patch('game_logic.spawn_high_level_mob')
+def test_mob_spawning_when_live(mock_spawn_mob, mock_is_live):
+    # Simulate streamer being live
+    mock_is_live.return_value = True
+    check_and_spawn_mob()  # This should trigger the mob spawn
+    mock_spawn_mob.assert_called_once()
+
+@patch('twitch_utils.is_streamer_live')
+@patch('game_logic.spawn_high_level_mob')
+def test_no_mob_spawning_when_not_live(mock_spawn_mob, mock_is_live):
+    # Simulate streamer not being live
+    mock_is_live.return_value = False
+    check_and_spawn_mob()  # This should not trigger the mob spawn
+    mock_spawn_mob.assert_not_called()
+
+def test_high_level_mob_selection():
+    high_level_mobs = ["Sandworm of Shai-Hulud", "Paul Atreides", "Baron Harkonnen"]
+    chosen_mob = spawn_high_level_mob()
+    assert chosen_mob in high_level_mobs, "The chosen mob should be one of the high-level mobs."
+
+@patch('game_logic.update_mob_spawn_in_db')
+def test_database_update_on_mob_spawn(mock_update_db):
+    chosen_mob = spawn_high_level_mob()
+    mock_update_db.assert_called_once_with(chosen_mob)
+

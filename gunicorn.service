@@ -1,0 +1,16 @@
+[Unit]
+Description=gunicorn daemon
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/root/Twitch-Chat-RPG
+ExecStart=/root/Twitch-Chat-RPG/venv/bin/gunicorn \
+          --workers 3 \
+          --bind unix:/root/Twitch-Chat-RPG/gunicorn.sock \
+          app:app
+
+[Install]
+WantedBy=multi-user.target
+
