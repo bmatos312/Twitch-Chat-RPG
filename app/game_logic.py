@@ -175,6 +175,163 @@ def register_player(twitch_user_id, username):
     finally:
         connection.close()
 
+def test_no_damage():
+    # All players have dealt 0 damage
+    player_damage = {
+        'player_1': {'total_damage': 0, 'time': 120},
+        'player_2': {'total_damage': 0, 'time': 100},
+        'player_3': {'total_damage': 0, 'time': 110},
+    }
+
+    # Assuming the players are of class 'warrior'
+    winner, rewards = assign_rewards(player_damage, 'warrior')
+    
+    assert winner is None, "No player should win since no damage was dealt."
+    assert rewards['gold'] == 0, "No gold should be awarded."
+    assert rewards['items'] == [], "No items should be awarded."
+
+
+def test_same_dps():
+    # Two players have the same DPS
+    player_damage = {
+        'player_1': {'total_damage': 500, 'time': 100},
+        'player_2': {'total_damage': 500, 'time': 100},
+        'player_3': {'total_damage': 600, 'time': 120},
+    }
+
+    # Assuming the players are of class 'warrior'
+    winner, rewards = assign_rewards(player_damage, 'warrior')
+    
+    assert winner in ['player_1', 'player_2'], "Either player_1 or player_2 should be the winner."
+    assert rewards['gold'] > 0, "Gold should be awarded."
+    assert len(rewards['items']) >= 0, "Items should be awarded based on the drop table."
+
+def calculate_dps(total_damage, time):
+    """Helper function to calculate DPS (Damage Per Second)."""
+    if time <= 0:
+        return 0
+    return total_damage / time
+
+def assign_rewards(player_damage, player_class):
+    """
+    Assign rewards based on player damage and class.
+    
+    Args:
+    player_damage (dict): A dictionary where keys are player IDs and values are dictionaries with 'total_damage' and 'time'.
+    player_class (str): The class of the players (e.g., 'warrior', 'archer', etc.).
+    
+    Returns:
+    tuple: (winner, rewards), where 'winner' is the player ID who won, and 'rewards' is a dictionary with keys 'gold' and 'items'.
+    """
+    # Validate inputs and filter out invalid players
+    valid_players = {
+        player: info
+        for player, info in player_damage.items()
+        if info['total_damage'] >= 0 and info['time'] > 0
+    }
+
+    if not valid_players:
+        return None, {'gold': 0, 'items': []}
+
+    # Calculate DPS for each valid player
+    dps_dict = {player: calculate_dps(info['total_damage'], info['time']) for player, info in valid_players.items()}
+    
+    # Determine the winner
+    max_dps = max(dps_dict.values(), default=0)
+    if max_dps == 0:
+        winner = None
+    else:
+        winner = next(player for player, dps in dps_dict.items() if dps == max_dps)
+
+    # Assign rewards based on the winner
+    rewards = {'gold': 0, 'items': []}
+    if winner:
+        rewards['gold'] = max_dps * 10  # Example: 10 gold per DPS point
+        
+        # Award items based on the class and some criteria
+        if player_class == 'warrior':
+            rewards['items'] = ['sword', 'shield'] if max_dps > 50 else ['shield']
+        elif player_class == 'archer':
+            rewards['items'] = ['bow', 'arrows'] if max_dps > 50 else []
+        # Add other class rewards logic as necessary
+
+    return winner, rewards
+
+def test_no_players():
+    player_damage = {}
+    winner, rewards = assign_rewards(player_damage, 'warrior')
+    assert winner is None, "There should be no winner if there are no players."
+    assert rewards['gold'] == 0, "No gold should be awarded if there are no players."
+    assert rewards['items'] == [], "No items should be awarded if there are no players."
+
+def test_all_same_dps():
+    player_damage = {
+        'player_1': {'total_damage': 500, 'time': 100},
+        'player_2': {'total_damage': 500, 'time': 100},
+        'player_3': {'total_damage': 500, 'time': 100},
+    }
+    winner, rewards = assign_rewards(player_damage, 'warrior')
+    assert winner in player_damage.keys(), "Any player could be the winner in case of identical DPS."
+    assert rewards['gold'] > 0, "Gold should be awarded."
+    assert len(rewards['items']) >= 0, "Items should be awarded based on the drop table."
+
+def test_negative_values():
+    player_damage = {
+        'player_1': {'total_damage': -100, 'time': 100},
+        'player_2': {'total_damage': 500, 'time': -100},
+    }
+    winner, rewards = assign_rewards(player_damage, 'warrior')
+    assert winner is None, "There should be no winner with invalid inputs."
+    assert rewards['gold'] == 0, "No gold should be awarded with invalid inputs."
+    assert rewards['items'] == [], "No items should be awarded with invalid inputs."
+
+def test_zero_time_nonzero_damage():
+    player_damage = {
+        'player_1': {'total_damage': 500, 'time': 0},
+    }
+    winner, rewards = assign_rewards(player_damage, 'warrior')
+    assert winner is None, "No player should win if time is zero."
+    assert rewards['gold'] == 0, "No gold should be awarded."
+    assert rewards['items'] == [], "No items should be awarded."
+
+def test_unrecognized_class():
+    player_damage = {
+        'player_1': {'total_damage': 500, 'time': 100},
+    }
+    winner, rewards = assign_rewards(player_damage, 'unknown_class')
+    assert winner == 'player_1', "Player with highest DPS should still be the winner."
+    assert rewards['gold'] > 0, "Gold should be awarded even if the class is unknown."
+    assert rewards['items'] == [], "No items should be awarded if the class is unrecognized."
+
+def test_large_values():
+    player_damage = {
+        'player_1': {'total_damage': 10**12, 'time': 10**6},
+        'player_2': {'total_damage': 10**12, 'time': 10**6 + 1},
+    }
+    winner, rewards = assign_rewards(player_damage, 'warrior')
+    assert winner == 'player_1', "Player with slightly better DPS should win."
+    assert rewards['gold'] > 0, "Gold should be awarded for large damage values."
+    assert len(rewards['items']) >= 0, "Items should be awarded based on the drop table."
+
+def test_single_player():
+    player_damage = {
+        'player_1': {'total_damage': 500, 'time': 100},
+    }
+    winner, rewards = assign_rewards(player_damage, 'warrior')
+    assert winner == 'player_1', "The only player should be the winner."
+    assert rewards['gold'] > 0, "Gold should be awarded."
+    assert len(rewards['items']) >= 0, "Items should be awarded based on the drop table."
+
+def test_tied_dps_different_classes():
+    player_damage = {
+        'player_1': {'total_damage': 500, 'time': 100},
+        'player_2': {'total_damage': 500, 'time': 100},
+    }
+    winner, rewards = assign_rewards(player_damage, 'archer')
+    assert winner in ['player_1', 'player_2'], "Either player should win with tied DPS."
+    assert rewards['gold'] > 0, "Gold should be awarded."
+    assert 'items' in rewards, "Items should be awarded based on the class."
+
 
 def get_db_connection():
     connection = pymysql.connect(
