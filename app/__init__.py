@@ -18,9 +18,9 @@ def create_app():
 def get_db_connection():
     connection = pymysql.connect(
         host='localhost',
-        user='tolstoy',
-        password='Performix312!',
-        db='rpg_data',
+        user='DB_USERNAME',
+        password='DB_PASSWORD',
+        db='DB_NAME',
         cursorclass=pymysql.cursors.DictCursor
     )
     return connection
