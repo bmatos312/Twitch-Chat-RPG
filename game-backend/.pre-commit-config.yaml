@@ -1,7 +1,0 @@
-repos:
-  - repo: https://github.com/pre-commit/mirrors-autopep8
-    rev: v1.5.7  # Use the latest version
-    hooks:
-      - id: autopep8
-        args: [--aggressive, --aggressive]
-
