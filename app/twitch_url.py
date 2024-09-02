@@ -3,8 +3,8 @@ from authlib.integrations.flask_client import OAuth
 oauth = OAuth()
 twitch = oauth.register(
     name='twitch',
-    CLIENT_ID ='j2ypgxohqc0wwiq3s6qiz3685hzjmb',
-    CLIENT_SECRET ='ouhbphhlgmkob3hqnsarm7sqlzgmho',
+    CLIENT_ID ='CLIENT_ID',
+    CLIENT_SECRET ='CLIENT_SECRET',
     authorize_url='https://id.twitch.tv/oauth2/authorize',
     token_url='https://id.twitch.tv/oauth2/token',
     userinfo_url='https://api.twitch.tv/helix/users',
