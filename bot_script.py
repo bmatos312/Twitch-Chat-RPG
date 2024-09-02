@@ -9,11 +9,11 @@ game_bot.start_gold_accumulation()
 
 # Initialize the Twitch bot
 bot = commands.Bot(
-    token='b96o37g36gkz3b15mul54ysy1rqnmx',
-    client_id='j2ypgxohqc0wwiq3s6qiz3685hzjmb',
+    token='TOKEN',
+    client_id='CLIENT_ID',
     nick='streamer-rpg-bot',
     prefix='!',
-    initial_channels=['i_break_code']
+    initial_channels=['TWITCH_USERNAME_HERE']
 )
 
 @bot.event
