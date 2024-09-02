@@ -4,6 +4,7 @@ import random
 import datetime
 import time
 import schedule
+import threading
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -16,134 +17,135 @@ class Bot:
         self.initial_channels = ['YOUR_CHANNEL']
         self.boss_name = 'Sandworm of Shai-Hulud'
         self.boss_duration = 5 * 60  # 5 minutes in seconds
+        self.gold_accumulation_interval = 60  # Interval in seconds for gold accumulation
 
-    def event_ready(self):
-        logger.info(f'Ready')
+    def start_gold_accumulation(self):
+        """Start a thread to accumulate gold for players based on their level."""
+        def accumulate_gold():
+            while True:
+                try:
+                    connection = get_db_connection()
+                    with connection.cursor() as cursor:
+                        cursor.execute("UPDATE Player SET gold = gold + level")
+                        connection.commit()
+                        logger.info("Gold accumulated for all players based on their level")
+                except Exception as e:
+                    logger.error(f"Error during gold accumulation: {e}", exc_info=True)
+                finally:
+                    connection.close()
+                time.sleep(self.gold_accumulation_interval)
 
-    def event_message(self, message):
-        logger.info(message)
-        self.handle_commands(message)
+        # Start the gold accumulation in a separate thread
+        threading.Thread(target=accumulate_gold, daemon=True).start()
 
-    def fight_boss(self, user_id, bet_amount):
-        connection = get_db_connection()
+    def get_gold(self, twitch_user_id):
         try:
+            connection = get_db_connection()
             with connection.cursor() as cursor:
+                # Retrieve the player's gold balance
                 cursor.execute("""
-                    SELECT * FROM Mob WHERE name = %s AND spawn_time IS NOT NULL AND TIMESTAMPDIFF(SECOND, spawn_time, NOW()) <= %s
-                """, (self.boss_name, self.boss_duration))
-                boss = cursor.fetchone()
-
-                if not boss:
-                    return "The Sandworm of Shai-Hulud has not spawned or its time has expired."
-
-                cursor.execute("""
-                    SELECT p.* FROM Player p
+                    SELECT p.gold FROM Player p
                     JOIN TwitchUser tu ON p.twitch_user_id = tu.id
                     WHERE tu.twitch_id = %s
-                """, (user_id,))
+                """, (twitch_user_id,))
                 player = cursor.fetchone()
 
                 if not player:
-                    logger.error(f'Player not found for twitch_user_id: {user_id}')
-                    return "Player not found."
+                    return "Player not found. Please register first."
 
-                # Check if player has enough gold
-                if player['gold'] < bet_amount:
-                    return "You don't have enough gold to place this bet."
-
-                # Fight logic
-                player_attack = player['attack']
-                player_defense = player['defense']
-                boss_attack = boss['attack']
-                boss_defense = boss['defense']
-
-                player_damage = max(player_attack - boss_defense, 0)
-                boss_damage = max(boss_attack - player_defense, 0)
-
-                if player_damage > boss_damage:
-                    # Boss is defeated
-                    cursor.execute("UPDATE Mob SET defeated = TRUE WHERE id = %s", (boss['id'],))
-                    drop_item = self.determine_boss_drop(player['class_id'], True)
-                else:
-                    # Boss not defeated but player gets a drop
-                    drop_item = self.determine_boss_drop(player['class_id'], False)
-
-                if drop_item:
-                    cursor.execute(
-                        "INSERT INTO Inventory (player_id, item_id, quantity) VALUES (%s, %s, 1) ON DUPLICATE KEY UPDATE quantity = quantity + 1",
-                        (player['id'], drop_item['id'])
-                    )
-                    cursor.execute(
-                        "UPDATE Player SET gold = gold + %s WHERE id = %s",
-                        (random.randint(10, 100), player['id'])
-                    )
-                    connection.commit()
-                    return f"You fought the Sandworm of Shai-Hulud and received {drop_item['name']} along with some gold!"
-                else:
-                    cursor.execute(
-                        "UPDATE Player SET gold = gold + %s WHERE id = %s",
-                        (random.randint(10, 100), player['id'])
-                    )
-                    connection.commit()
-                    return "You fought the Sandworm of Shai-Hulud and received some gold, but no items dropped."
-
+                return player['gold']
         except Exception as e:
-            logger.error(f'Error during boss fight: {e}', exc_info=True)
-            return "An error occurred during the fight."
+            logger.error(f"Error retrieving gold balance: {e}", exc_info=True)
+            return "An error occurred while checking your gold balance."
         finally:
             connection.close()
 
-    def determine_boss_drop(self, class_id, defeated):
-        drop_chance = random.random()
-
-        if defeated:
-            drop_multiplier = 1.02  # Increase drop chance by 2% if the boss is defeated
-        else:
-            drop_multiplier = 0.5  # Reduce drop chance if the boss is not defeated
-
-        if class_id == 1:  # Archer
-            if drop_chance < 0.01 * drop_multiplier:
-                return self.get_item_by_name('Shai-Hulud’s Gaze')
-            elif drop_chance < 0.21 * drop_multiplier:
-                return self.get_item_by_name('Windstalker Bow')
-            elif drop_chance < 0.71 * drop_multiplier:
-                return self.get_item_by_name('Sandstrike Arrows')
-
-        elif class_id == 2:  # Warrior
-            if drop_chance < 0.01 * drop_multiplier:
-                return self.get_item_by_name('Crysknife of the Ancients')
-            elif drop_chance < 0.21 * drop_multiplier:
-                return self.get_item_by_name('Dunebreaker Sword')
-            elif drop_chance < 0.71 * drop_multiplier:
-                return self.get_item_by_name('Fedaykin Scimitar')
-
-        elif class_id == 3:  # Mage
-            if drop_chance < 0.01 * drop_multiplier:
-                return self.get_item_by_name('Voice of the Desert')
-            elif drop_chance < 0.21 * drop_multiplier:
-                return self.get_item_by_name('Sandweaver Staff')
-            elif drop_chance < 0.71 * drop_multiplier:
-                return self.get_item_by_name('Mirage Orb')
-
-        return None
-
-    def get_item_by_name(self, name):
+    def buy_buff(self, twitch_user_id, buff_name):
+    try:
         connection = get_db_connection()
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute("SELECT * FROM Item WHERE name = %s", (name,))
-                return cursor.fetchone()
-        except Exception as e:
-            logger.error(f'Error fetching item by name: {e}', exc_info=True)
-            return None
-        finally:
-            connection.close()
+        with connection.cursor() as cursor:
+            # Get the player's gold
+            cursor.execute("""
+                SELECT p.id, p.gold FROM Player p
+                JOIN TwitchUser tu ON p.twitch_user_id = tu.id
+                WHERE tu.twitch_id = %s
+            """, (twitch_user_id,))
+            player = cursor.fetchone()
+
+            if not player:
+                return "Player not found. Please register first."
+
+            player_id = player['id']
+            player_gold = player['gold']
+
+            # Define the buffs and their costs
+            buffs = {
+                "health_boost": {"cost": 50, "description": "Increase your health by 50%"},
+                "dps_boost": {"cost": 75, "description": "Increase your DPS by 20%"},
+                "steal_gold": {"cost": 100, "description": "Roll a chance to steal gold from another player"},
+            }
+
+            if buff_name not in buffs:
+                return f"Invalid buff name. Available buffs are: {', '.join(buffs.keys())}"
+
+            buff = buffs[buff_name]
+            if player_gold < buff['cost']:
+                return f"You don't have enough gold to buy {buff_name}. It costs {buff['cost']} gold."
+
+            # Deduct the cost of the buff from the player's gold
+            cursor.execute("UPDATE Player SET gold = gold - %s WHERE id = %s", (buff['cost'], player_id))
+            connection.commit()
+
+            # Apply the buff effect
+            if buff_name == "health_boost":
+                cursor.execute("UPDATE Player SET health = health * 1.5 WHERE id = %s", (player_id,))
+                connection.commit()
+                return "Your health has been increased by 50%."
+
+            elif buff_name == "dps_boost":
+                cursor.execute("UPDATE Player SET dps = dps * 1.2 WHERE id = %s", (player_id,))
+                connection.commit()
+                return "Your DPS has been increased by 20%."
+
+            elif buff_name == "steal_gold":
+                # Get a random target player
+                cursor.execute("""
+                    SELECT id, gold FROM Player WHERE id != %s ORDER BY RAND() LIMIT 1
+                """, (player_id,))
+                target = cursor.fetchone()
+
+                if not target:
+                    return "No other players to steal from."
+
+                target_gold = target['gold']
+                stolen_percentage = random.randint(1, 25) / 100.0
+                stolen_amount = int(target_gold * stolen_percentage)
+
+                # Steal gold from the target player
+                cursor.execute("UPDATE Player SET gold = gold - %s WHERE id = %s", (stolen_amount, target['id']))
+                cursor.execute("UPDATE Player SET gold = gold + %s WHERE id = %s", (stolen_amount, player_id))
+                connection.commit()
+
+                return f"You stole {stolen_amount} gold from another player!"
+    except Exception as e:
+        connection.rollback()
+        logger.error(f"Error buying buff: {e}", exc_info=True)
+        return "An error occurred while buying the buff."
+    finally:
+        connection.close()
 
 def register_player(twitch_user_id, username):
     try:
         connection = get_db_connection()
         with connection.cursor() as cursor:
-            # Retrieve the TwitchUser ID based on the provided twitch_user_id
+            # Check if the user is already registered
+            cursor.execute("SELECT id FROM Player WHERE twitch_user_id=(SELECT id FROM TwitchUser WHERE twitch_id=%s)", (twitch_user_id,))
+            player = cursor.fetchone()
+
+            if player:
+                return "You are already registered."
+
+            # Register the user without a class
             cursor.execute("SELECT id FROM TwitchUser WHERE twitch_id=%s", (twitch_user_id,))
             twitch_user = cursor.fetchone()
 
@@ -151,29 +153,50 @@ def register_player(twitch_user_id, username):
                 return "Twitch user does not exist. Please register the Twitch user first."
 
             twitch_user_id_from_db = twitch_user['id']
-
-            # Retrieve a valid PlayerClass ID (e.g., for 'Warrior')
-            cursor.execute("SELECT id FROM PlayerClass WHERE name=%s", ('Warrior',))
-            player_class = cursor.fetchone()
-
-            if not player_class:
-                return "Player class does not exist. Please add player classes first."
-
-            player_class_id = player_class['id']
-
-            # Using a placeholder email for registration
             placeholder_email = f"{username}@example.com"
+
             cursor.execute(
-                "INSERT INTO Player (username, email, password_hash, twitch_user_id, class_id) VALUES (%s, %s, %s, %s, %s)",
-                (username, placeholder_email, 'default_password_hash', twitch_user_id_from_db, player_class_id)
+                "INSERT INTO Player (username, email, password_hash, twitch_user_id) VALUES (%s, %s, %s, %s)",
+                (username, placeholder_email, 'default_password_hash', twitch_user_id_from_db)
             )
             connection.commit()
-            logger.info(f"Registered player: {username}")
-            return "Player registered successfully"
+            return "Registered successfully! Please select your class using !chooseclass <ClassName>."
     except Exception as e:
         connection.rollback()
         logger.error(f"Error registering player: {e}", exc_info=True)
-        return "An error occurred during player registration"
+        return "An error occurred during registration."
+    finally:
+        connection.close()
+
+def choose_class(twitch_user_id, class_name):
+    try:
+        connection = get_db_connection()
+        with connection.cursor() as cursor:
+            # Check if the player exists
+            cursor.execute("""
+                SELECT id FROM Player WHERE twitch_user_id=(SELECT id FROM TwitchUser WHERE twitch_id=%s)
+            """, (twitch_user_id,))
+            player = cursor.fetchone()
+
+            if not player:
+                return "Player not found. Please register first."
+
+            # Check if the class exists
+            cursor.execute("SELECT id FROM PlayerClass WHERE name=%s", (class_name,))
+            player_class = cursor.fetchone()
+
+            if not player_class:
+                return "Invalid class name. Please choose a valid class."
+
+            # Update the player's class
+            cursor.execute("UPDATE Player SET class_id=%s WHERE id=%s", (player_class['id'], player['id']))
+            connection.commit()
+
+            return f"Class changed to {class_name} successfully!"
+    except Exception as e:
+        connection.rollback()
+        logger.error(f"Error changing class: {e}", exc_info=True)
+        return "An error occurred while changing class."
     finally:
         connection.close()
 
@@ -422,6 +445,39 @@ def spawn_high_level_mob():
     update_mob_spawn_in_db(chosen_mob)
     print(f"A {chosen_mob} has spawned!")
 
+def change_class(twitch_user_id, class_name):
+    try:
+        connection = get_db_connection()
+        with connection.cursor() as cursor:
+            # Check if the player exists
+            cursor.execute("""
+                SELECT p.id FROM Player p
+                JOIN TwitchUser tu ON p.twitch_user_id = tu.id
+                WHERE tu.twitch_id = %s
+            """, (twitch_user_id,))
+            player = cursor.fetchone()
+
+            if not player:
+                return "Player not found. Please register first."
+
+            # Check if the class exists
+            cursor.execute("SELECT id FROM PlayerClass WHERE name=%s", (class_name,))
+            player_class = cursor.fetchone()
+
+            if not player_class:
+                return "Invalid class name. Please choose a valid class."
+
+            # Update the player's class
+            cursor.execute("UPDATE Player SET class_id=%s WHERE id=%s", (player_class['id'], player['id']))
+            connection.commit()
+
+            return f"Class changed to {class_name} successfully!"
+    except Exception as e:
+        connection.rollback()
+        logger.error(f"Error changing class: {e}", exc_info=True)
+        return "An error occurred while changing class."
+    finally:
+        connection.close()
 
 def get_db_connection():
     connection = pymysql.connect(
